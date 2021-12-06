@@ -13,16 +13,60 @@ public class Rigid_Bunny : MonoBehaviour
 
 	float linear_decay	= 0.999f;				// for velocity decay
 	float angular_decay	= 0.98f;				
-	float restitution 	= 0.5f;					// for collision
+	float restitution 	= 0.5f;                 // for collision
+
+	// gravity force
+    Vector3 g_force = new Vector3(0.0f, 0.0f, 0.0f);
+
+    Vector3[] vertex_force;
 
 
-	// Use this for initialization
-	void Start () 
+    ///////////////////// Math helper //////////////////////////
+
+    Quaternion add(Quaternion a, Quaternion b)
+    {
+        return new Quaternion(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
+    }
+	
+	Matrix4x4 subtract(Matrix4x4 a, Matrix4x4 b){
+        Matrix4x4 res = Matrix4x4.zero;
+        res[0, 0] = a[0, 0] - b[0, 0];
+        res[0, 1] = a[0, 1] - b[0, 1];
+        res[0, 2] = a[0, 2] - b[0, 2];
+        res[0, 3] = a[0, 3] - b[0, 3];
+
+        res[1, 0] = a[1, 0] - b[1, 0];
+        res[1, 1] = a[1, 1] - b[1, 1];
+        res[1, 2] = a[1, 2] - b[1, 2];
+        res[1, 3] = a[1, 3] - b[1, 3];
+
+        res[2, 0] = a[2, 0] - b[2, 0];
+        res[2, 1] = a[2, 1] - b[2, 1];
+        res[2, 2] = a[2, 2] - b[2, 2];
+        res[2, 3] = a[2, 3] - b[2, 3];
+
+        res[3, 0] = a[3, 0] - b[3, 0];
+        res[3, 1] = a[3, 1] - b[3, 1];
+        res[3, 2] = a[3, 2] - b[3, 2];
+        res[3, 3] = a[3, 3] - b[3, 3];
+
+        return res;
+    }
+
+    //////////////////////////////////////////////////////////////////
+    
+
+    // Use this for initialization
+    void Start () 
 	{		
 		Mesh mesh = GetComponent<MeshFilter>().mesh;
 		Vector3[] vertices = mesh.vertices;
+        vertex_force = new Vector3[vertices.Length];
+		
+        // gravity accelerated speed
+        Vector3 g = new Vector3(0.0f, -9.8f, 0.0f);
 
-		float m=1;
+        float m=1;
 		mass=0;
 		for (int i=0; i<vertices.Length; i++) 
 		{
@@ -40,9 +84,12 @@ public class Rigid_Bunny : MonoBehaviour
 			I_ref[2, 0]-=m*vertices[i][2]*vertices[i][0];
 			I_ref[2, 1]-=m*vertices[i][2]*vertices[i][1];
 			I_ref[2, 2]-=m*vertices[i][2]*vertices[i][2];
-		}
-		I_ref [3, 3] = 1;
-	}
+
+            vertex_force[i] = Vector3.zero;
+        }
+        I_ref[3, 3] = 1;
+        g_force = mass * g;
+    }
 	
 	Matrix4x4 Get_Cross_Matrix(Vector3 a)
 	{
@@ -61,33 +108,138 @@ public class Rigid_Bunny : MonoBehaviour
 		return A;
 	}
 
+    //////////////////// Collision Helper ////////////////////
+
+    const float EPS = 0.05f;
+    bool Detect_Collision(Vector3 P, Vector3 N, out Vector3 vi, out Vector3 ri){
+        Matrix4x4 R = Matrix4x4.Rotate(transform.rotation);
+        Mesh mesh = GetComponent<MeshFilter>().mesh;
+        Vector3[] vertices = mesh.vertices;
+        ri = Vector3.zero;
+        vi = Vector3.zero;
+        int cnt = 0;
+        for (int i = 0; i < vertices.Length; ++i)
+        {
+            Vector3 pos = new Vector4(transform.position.x, transform.position.y, transform.position.z, 0.0f) + (R * vertices[i]);
+            float phi = Vector3.Dot(pos - P, N);
+            if (phi <= 0)
+            {
+                Vector3 tmp = v + Vector3.Cross(w, R * vertices[i]);
+                if(Vector3.Dot(tmp, N) < 0){
+                    vi += tmp - v;
+                    ri += vertices[i];
+                    ++cnt;
+                }
+            }
+        }
+		if(cnt == 0){
+            return false;
+        }
+        vi /= cnt;
+        vi += v;
+        ri /= cnt;
+        return true;
+    }
+
+	//////////////////////////////////////////////////////////
+    
 	// In this function, update v and w by the impulse due to the collision with
 	//a plane <P, N>
 	void Collision_Impulse(Vector3 P, Vector3 N)
 	{
-	}
+        Vector3 vi, ri;
+        if(!Detect_Collision(P, N, out vi, out ri)){
+            return;
+        }
 
-	// Update is called once per frame
-	void Update () 
+        // compute
+        Matrix4x4 R = Matrix4x4.Rotate(transform.rotation);
+        Matrix4x4 invI = (R * I_ref * R.transpose).inverse;
+        Vector3 vn = Vector3.Dot(vi, N) * N;
+        Vector3 vt = vi - vn;
+        float a = Mathf.Max(0, 1 - restitution * (1 + restitution) * vn.sqrMagnitude / vt.sqrMagnitude);
+        vn = -restitution * vn;
+        vt = a * vt;
+        Vector3 vi_new = vn + vt;
+        Matrix4x4 Rri = Get_Cross_Matrix(R * ri);
+        Matrix4x4 Kprev = Matrix4x4.identity;
+
+        float inv_mass = 1.0f / mass;
+        Kprev[0, 0] *= inv_mass;
+        Kprev[1, 1] *= inv_mass;
+        Kprev[2, 2] *= inv_mass;
+        Kprev[3, 3] *= inv_mass;
+        Matrix4x4 invK = subtract(Kprev, Rri * invI * Rri).inverse;
+
+        Vector3 j = invK * (vi_new - vi);
+
+        v = v + j * inv_mass;
+        w = new Vector4(w.x, w.y, w.z, 0.0f) + invI * (Rri * j);
+    }
+
+	void Update_Velocities(out Vector3 v_mid){
+		
+		// update linear velocity
+        Vector3 v0 = v;
+        if (v0.magnitude < EPS)
+        {
+            v = Vector3.zero;
+            v_mid = Vector3.zero;
+        } else {
+            v = v0 + dt * (g_force / mass);
+            v = linear_decay * v;
+            v_mid = (v + v0) * 0.5f;
+        }
+
+        // update angular velocity
+        Vector3 w0 = w;
+
+        if (w0.magnitude < EPS) {
+            w = Vector3.zero;
+        } else {
+            Matrix4x4 R = Matrix4x4.Rotate(transform.rotation);
+            Matrix4x4 I = R * I_ref * R.transpose;
+            Vector3 torque = Vector3.zero;
+            Mesh mesh = GetComponent<MeshFilter>().mesh;
+            Vector3[] vertices = mesh.vertices;
+            for (int i = 0; i < vertices.Length; ++i)
+            {
+                torque += Vector3.Cross(R * vertices[i], new Vector3(0.0f, -9.8f, 0.0f));
+            }
+            Matrix4x4 inv_I = I.inverse;
+            w = new Vector4(w0.x, w0.y, w0.z, 0.0f) + inv_I * torque * dt;
+            w = angular_decay * w;
+        }
+
+    }
+
+    // Update is called once per frame
+    void Update () 
 	{
-		//Game Control
-		if(Input.GetKey("r"))
+        //Game Control
+        if(Input.GetKey("r"))
 		{
-			transform.position = new Vector3 (0, 0.6f, 0);
+			transform.position = new Vector3(0, 0.6f, 0);
 			restitution = 0.5f;
 			launched=false;
 		}
 		if(Input.GetKey("l"))
 		{
 			v = new Vector3 (5, 2, 0);
-			launched=true;
+            // w = new Vector3(50, 20, 0);
+            launched=true;
 		}
 
-		// Part I: Update velocities
+		if(!launched){
+            return;
+        }
 
+        Vector3 v_mid = v;
+        // Part I: Update velocities
+        Update_Velocities(out v_mid);
 
-		// Part II: Collision Impulse
-		Collision_Impulse(new Vector3(0, 0.01f, 0), new Vector3(0, 1, 0));
+        // Part II: Collision Impulse
+        Collision_Impulse(new Vector3(0, 0.01f, 0), new Vector3(0, 1, 0));
 		Collision_Impulse(new Vector3(2, 0, 0), new Vector3(-1, 0, 0));
 
 		// Part III: Update position & orientation
@@ -96,8 +248,14 @@ public class Rigid_Bunny : MonoBehaviour
 		//Update angular status
 		Quaternion q = transform.rotation;
 
-		// Part IV: Assign to the object
-		transform.position = x;
+        //leapfrog
+        x = x + dt * v_mid;
+
+        Quaternion tmp = new Quaternion(dt * 0.5f * w.x, dt * 0.5f * w.y, dt * 0.5f * w.z, 0.0f);
+        q = add(q, tmp * q);
+        // Part IV: Assign to the object
+        transform.position = x;
 		transform.rotation = q;
 	}
 }
+

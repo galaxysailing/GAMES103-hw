@@ -42,10 +42,13 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
 		}
 		QQt[3, 3]=1;
 
-		for(int i=0; i<X.Length; i++)
-			V[i][0]=4.0f;
+        for (int i = 0; i < X.Length; i++)
+        {
+            V[i][0] = 5.0f;
+            V[i][1] = 2.0f;
+        }
 
-		Update_Mesh(transform.position, Matrix4x4.Rotate(transform.rotation), 0);
+        Update_Mesh(transform.position, Matrix4x4.Rotate(transform.rotation), 0);
 		transform.position=Vector3.zero;
 		transform.rotation=Quaternion.identity;
    	}
@@ -151,31 +154,119 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
 		}	
 		Mesh mesh = GetComponent<MeshFilter>().mesh;
 		mesh.vertices=X;
-   	}
+    }
+    //////////////////// Collision Helper ////////////////////
+
+    int index;
+    float restitution = 0.5f;                 // for collision
+
+    float linear_decay = 0.999f;                // for velocity decay
+    
+    const float EPS = 0.05f;
+    bool Detect_Collision(Vector3 P, Vector3 N)
+    {
+        float phi = Vector3.Dot(X[index] - P, N);
+        return phi < 0 && Vector3.Dot(V[index], N) < 0;
+    }
+
+    //////////////////////////////////////////////////////////
+
+    // In this function, update v and w by the impulse due to the collision with
+    //a plane <P, N>
+    void Collision_Impulse(Vector3 P, Vector3 N)
+    {
+        if (!Detect_Collision(P, N))
+        {
+            return;
+        }
+
+        // compute
+        Vector3 vn = Vector3.Dot(V[index], N) * N;
+        Vector3 vt = V[index] - vn;
+        float a = Mathf.Max(0, 1 - restitution * (1 + restitution) * vn.sqrMagnitude / vt.sqrMagnitude);
+        vn = -restitution * vn;
+        vt = a * vt;
+        Vector3 vi_new = vn + vt;
+        V[index] = vi_new;
+    }
 
 	void Collision(float inv_dt)
 	{
-	}
+        for (int i = 0; i < X.Length;++i){
+            index = i;
+            Collision_Impulse(new Vector3(0, 0.01f, 0), new Vector3(0, 1, 0));
+            Collision_Impulse(new Vector3(2, 0, 0), new Vector3(-1, 0, 0));
+            V[i] *= linear_decay;
+        }
+    }
+
+	Vector3 Get_Force(Vector3 xi, Vector3 vi){
+        return new Vector3(0.0f, -9.8f, 0.0f);
+    }
 
     // Update is called once per frame
     void Update()
     {
+        //Game Control
+        if (Input.GetKey("r"))
+        {
+           	transform.position = new Vector3(0, 0.6f, 0);
+            restitution = 0.5f;
+            launched = false;
+        }
+        if (Input.GetKey("l"))
+        {
+            // w = new Vector3(50, 20, 0);
+            launched = true;
+        }
+
+		if(!launched){
+            return;
+        }
   		float dt = 0.015f;
 
-  		//Step 1: run a simple particle system.
+        float particle_mass = 1.0f;
+        Vector3 c = Vector3.zero;
+        //Step 1: run a simple particle system.
         for(int i=0; i<V.Length; i++)
         {
+			if(V[i].magnitude < EPS){
+                V[i] = Vector3.zero;
+            } else {
+                Vector3 f = Get_Force(X[i], V[i]);
+                V[i] = V[i] + f / particle_mass * dt;
+                X[i] = X[i] + dt * V[i];
+            }
+            c += X[i];
         }
 
         //Step 2: Perform simple particle collision.
 		Collision(1/dt);
 
-		// Step 3: Use shape matching to get new translation c and 
-		// new rotation R. Update the mesh by c and R.
+        // Step 3: Use shape matching to get new translation c and 
+        // new rotation R. Update the mesh by c and R.
         //Shape Matching (translation)
-		
-		//Shape Matching (rotation)
-		
-		//Update_Mesh(c, R, 1/dt);
+        c /= X.Length;
+
+        //Shape Matching (rotation)
+        Matrix4x4 A = Matrix4x4.zero;
+        for (int i = 0; i < X.Length;++i){
+            Vector3 tmp = X[i] - c;
+            A[0, 0] += tmp[0] * Q[i][0];
+            A[0, 1] += tmp[0] * Q[i][1];
+            A[0, 2] += tmp[0] * Q[i][2];
+
+            A[1, 0] += tmp[1] * Q[i][0];
+            A[1, 1] += tmp[1] * Q[i][1];
+            A[1, 2] += tmp[1] * Q[i][2];
+
+            A[2, 0] += tmp[2] * Q[i][0];
+            A[2, 1] += tmp[2] * Q[i][1];
+            A[2, 2] += tmp[2] * Q[i][2];
+        }
+        A[3, 3] = 1;
+        A *= QQt.inverse;
+        Matrix4x4 R = Get_Rotation(A);
+        Update_Mesh(c, R, 1/dt);
     }
 }
