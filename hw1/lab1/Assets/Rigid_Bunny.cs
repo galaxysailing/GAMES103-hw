@@ -25,7 +25,7 @@ public class Rigid_Bunny : MonoBehaviour
 
     Quaternion add(Quaternion a, Quaternion b)
     {
-        return new Quaternion(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
+        return Quaternion.Normalize(new Quaternion(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w));
     }
 	
 	Matrix4x4 subtract(Matrix4x4 a, Matrix4x4 b){
@@ -141,11 +141,10 @@ public class Rigid_Bunny : MonoBehaviour
         return true;
     }
 
-	//////////////////////////////////////////////////////////
-    
-	// In this function, update v and w by the impulse due to the collision with
-	//a plane <P, N>
-	void Collision_Impulse(Vector3 P, Vector3 N)
+    //////////////////////////////////////////////////////////
+    // In this function, update v and w by the impulse due to the collision with
+    //a plane <P, N>
+    void Collision_Impulse(Vector3 P, Vector3 N)
 	{
         Vector3 vi, ri;
         if(!Detect_Collision(P, N, out vi, out ri)){
@@ -240,19 +239,18 @@ public class Rigid_Bunny : MonoBehaviour
 
         // Part II: Collision Impulse
         Collision_Impulse(new Vector3(0, 0.01f, 0), new Vector3(0, 1, 0));
-		Collision_Impulse(new Vector3(2, 0, 0), new Vector3(-1, 0, 0));
+        Collision_Impulse(new Vector3(2, 0, 0), new Vector3(-1, 0, 0));
 
-		// Part III: Update position & orientation
-		//Update linear status
-		Vector3 x    = transform.position;
+        // Part III: Update position & orientation
+        //Update linear status
+        Vector3 x    = transform.position;
 		//Update angular status
 		Quaternion q = transform.rotation;
 
         //leapfrog
         x = x + dt * v_mid;
 
-        Quaternion tmp = new Quaternion(dt * 0.5f * w.x, dt * 0.5f * w.y, dt * 0.5f * w.z, 0.0f);
-        q = add(q, tmp * q);
+        q = add(q, new Quaternion(dt * 0.5f * w.x, dt * 0.5f * w.y, dt * 0.5f * w.z, 0.0f) * q);
         // Part IV: Assign to the object
         transform.position = x;
 		transform.rotation = q;

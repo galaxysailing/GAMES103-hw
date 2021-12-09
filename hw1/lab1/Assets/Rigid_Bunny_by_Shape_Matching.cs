@@ -162,11 +162,11 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
 
     float linear_decay = 0.999f;                // for velocity decay
     
-    const float EPS = 0.05f;
+    const float EPS = 0.8f;
     bool Detect_Collision(Vector3 P, Vector3 N)
     {
         float phi = Vector3.Dot(X[index] - P, N);
-        return phi < 0 && Vector3.Dot(V[index], N) < 0;
+        return phi <= 0 && Vector3.Dot(V[index], N) < 0;
     }
 
     //////////////////////////////////////////////////////////
@@ -210,8 +210,15 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
         //Game Control
         if (Input.GetKey("r"))
         {
-           	transform.position = new Vector3(0, 0.6f, 0);
+            for (int i = 0; i < X.Length; i++)
+            {
+                V[i][0] = 5.0f;
+                V[i][1] = 2.0f;
+            }
             restitution = 0.5f;
+            Update_Mesh(new Vector3(0, 0.6f, 0), Matrix4x4.Rotate(transform.rotation), 0);
+            transform.position = Vector3.zero;
+            transform.rotation = Quaternion.identity;
             launched = false;
         }
         if (Input.GetKey("l"))
@@ -247,7 +254,6 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
         // new rotation R. Update the mesh by c and R.
         //Shape Matching (translation)
         c /= X.Length;
-
         //Shape Matching (rotation)
         Matrix4x4 A = Matrix4x4.zero;
         for (int i = 0; i < X.Length;++i){
@@ -265,8 +271,7 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
             A[2, 2] += tmp[2] * Q[i][2];
         }
         A[3, 3] = 1;
-        A *= QQt.inverse;
-        Matrix4x4 R = Get_Rotation(A);
-        Update_Mesh(c, R, 1/dt);
+        A = A * QQt.inverse;
+        Update_Mesh(c, Get_Rotation(A), 1/dt);
     }
 }
