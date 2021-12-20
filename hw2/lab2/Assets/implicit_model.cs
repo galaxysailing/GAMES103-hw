@@ -7,7 +7,7 @@ public class implicit_model : MonoBehaviour
 	float 		t 		= 0.0333f;
 	float 		mass	= 1;
 	float		damping	= 0.99f;
-	float 		rho		= 0.995f;
+	float 		rho		= 0.8f;
 	float 		spring_k = 8000;
 	int[] 		E;
 	float[] 	L;
@@ -185,19 +185,18 @@ public class implicit_model : MonoBehaviour
 
     }
     bool init = false;
-    Vector3[] X_hat, G, last_X;
+    Vector3[] X_hat, G;
     // Update is called once per frame
     void Update () 
 	{
 		
 		Mesh mesh = GetComponent<MeshFilter> ().mesh;
 		Vector3[] X 		= mesh.vertices;
-        // Vector3[] last_X 	= new Vector3[X.Length];
+        Vector3[] last_X 	= new Vector3[X.Length];
         if (!init)
         {
             X_hat = new Vector3[X.Length];
             G = new Vector3[X.Length];
-            last_X = new Vector3[X.Length];
             init = true;
         }
 
@@ -209,18 +208,44 @@ public class implicit_model : MonoBehaviour
             X_hat[i] = X[i] + t * V[i];
             X[i] = X_hat[i];
         }
-
         float t2inv = 1.0f / (t * t);
+        float omega = 0;
+		
+        // bool end = false;
         for(int k=0; k<32; k++)
 		{
 			Get_Gradient(X, X_hat, t, G);
+            float ggradinv = 1.0f / (t2inv * mass + 4 * spring_k);
 
-            float ggradinv = 1.0f / (1.0f / t2inv * mass + 4 * spring_k);
+            float ggrad = t2inv * mass + 4 * spring_k;
+
+            switch(k){
+				case 0:omega = 1.0f;break;
+				case 1:omega = 2.0f / (2.0f - rho * rho);break;
+				default:omega = 4.0f / (4.0f - rho * rho * omega);break;
+            }
             //Update X by gradient.
             for (int i = 0; i < X.Length; ++i){
 				if(i == 0 || i == n - 1) continue;
-                X[i] = X[i] - ggradinv * G[i];
+                Vector3 deltaX = -ggradinv * G[i];
+
+                // Chebyshev Acceleration
+				// if rho is closer 1, the algorithm will lose stability.
+                // Vector3 r = -G[i] - ggrad * deltaX;
+				// if(r.magnitude < 0.1f){
+                //     end = true;
+                // }
+                // Vector3 old_deltaX = deltaX;
+                // deltaX = deltaX + (ggradinv * r);
+                // deltaX = omega * deltaX + (1 - omega) * last_X[i];
+                // last_X[i] = old_deltaX;
+
+                X[i] = X[i] + deltaX;
             }
+
+			// if(end){
+            //     break;
+            // }
         }
 
 		//Finishing.

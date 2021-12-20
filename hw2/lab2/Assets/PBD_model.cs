@@ -9,10 +9,17 @@ public class PBD_model: MonoBehaviour {
 	float[] 	L;
 	Vector3[] 	V;
 
+    GameObject sphere;
 
 	// Use this for initialization
 	void Start () 
 	{
+        sphere = GameObject.Find("Sphere");
+        if (sphere == null)
+        {
+            Debug.LogError("Sphere is not in the scene.");
+        }
+
 		Mesh mesh = GetComponent<MeshFilter> ().mesh;
 
 		//Resize the mesh.
@@ -118,31 +125,76 @@ public class PBD_model: MonoBehaviour {
 		Swap (ref a [l * 2 + 1], ref a [j * 2 + 1]);
 		return j;
 	}
-
 	void Swap(ref int a, ref int b)
 	{
 		int temp = a;
 		a = b;
 		b = temp;
 	}
-
-	void Strain_Limiting()
+    Vector3[] vx;
+    int[] vn;
+    bool init = false;
+    void Strain_Limiting()
 	{
 		Mesh mesh = GetComponent<MeshFilter> ().mesh;
 		Vector3[] vertices = mesh.vertices;
+		if(!init){
+            vx = new Vector3[vertices.Length];
+            vn = new int[vertices.Length];
+            init = true;
+        }
 
-		//Apply PBD here.
-		//...
-		mesh.vertices = vertices;
-	}
+		for(int i = 0; i < vertices.Length; ++i){
+            vx[i].x = 0;
+            vx[i].y = 0;
+            vx[i].z = 0;
+            vn[i] = 0;
+        }
+        
+        //Apply PBD here.
+        //...
+        for (int i = 0; i < E.Length; i += 2){
+            int j = i + 1;
+            Vector3 f1 = vertices[E[i]] + vertices[E[j]];
+            Vector3 f2 = L[i / 2] * Vector3.Normalize(vertices[E[i]] - vertices[E[j]]);
+            vx[E[i]] += 0.5f * (f1 + f2);
+            vx[E[j]] += 0.5f * (f1 - f2);
+            ++vn[E[i]];
+            ++vn[E[j]];
+        }
+        float tinv = 1.0f / t;
+        for (int i = 0; i < vertices.Length;++i){
+            if (i == 0 || i == 20) continue;
+            Vector3 factor = (0.2f * vertices[i] + vx[i]) / (0.2f + vn[i]);
+            V[i] += tinv * (factor - vertices[i]);
+            vertices[i] = factor;
+        }
+
+        mesh.vertices = vertices;
+    }
 
 	void Collision_Handling()
 	{
 		Mesh mesh = GetComponent<MeshFilter> ().mesh;
 		Vector3[] X = mesh.vertices;
-		
-		//For every vertex, detect collision and apply impulse if needed.
-		//...
+
+        //For every vertex, detect collision and apply impulse if needed.
+        //...
+        float radius = 2.7f;
+        float tinv = 1.0f / t;
+        Vector3 c = sphere.transform.position;
+        //Handle colllision.
+        for (int i = 0; i < X.Length; ++i)
+        {
+            if (i == 0 || i == 20) continue;
+            float dist = (X[i] - c).magnitude;
+            if (dist < radius)
+            {
+                Vector3 factor = radius * Vector3.Normalize(X[i] - c);
+                V[i] += tinv * (c + factor - X[i]);
+                X[i] = c + factor;
+            }
+        }
 		mesh.vertices = X;
 	}
 
@@ -151,13 +203,17 @@ public class PBD_model: MonoBehaviour {
 	{
 		Mesh mesh = GetComponent<MeshFilter> ().mesh;
 		Vector3[] X = mesh.vertices;
-
-		for(int i=0; i<X.Length; i++)
+        float tinv = 1.0f / t;
+        Vector3 gravity = new Vector3(0.0f, -9.8f, 0.0f);
+        for(int i=0; i<X.Length; i++)
 		{
 			if(i==0 || i==20)	continue;
-			//Initial Setup
-			//...
-		}
+            //Initial Setup
+            //...
+            V[i] *= damping;
+            V[i] += gravity * t;
+            X[i] += V[i] * t;
+        }
 		mesh.vertices = X;
 
 		for(int l=0; l<32; l++)
