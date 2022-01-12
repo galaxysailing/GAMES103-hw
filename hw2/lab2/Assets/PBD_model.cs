@@ -134,6 +134,9 @@ public class PBD_model: MonoBehaviour {
     Vector3[] vx;
     int[] vn;
     bool init = false;
+
+    [Range(0.1f, 10.0f)]
+    public float elasticFactor = 1.0f;
     void Strain_Limiting()
 	{
 		Mesh mesh = GetComponent<MeshFilter> ().mesh;
@@ -165,7 +168,7 @@ public class PBD_model: MonoBehaviour {
         float tinv = 1.0f / t;
         for (int i = 0; i < vertices.Length;++i){
             if (i == 0 || i == 20) continue;
-            Vector3 factor = (0.2f * vertices[i] + vx[i]) / (0.2f + vn[i]);
+            Vector3 factor = (elasticFactor * vertices[i] + vx[i]) / (elasticFactor + vn[i]);
             V[i] += tinv * (factor - vertices[i]);
             vertices[i] = factor;
         }

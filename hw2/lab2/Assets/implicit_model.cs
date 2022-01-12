@@ -164,11 +164,11 @@ public class implicit_model : MonoBehaviour
 
 
         float t2inv = 1.0f / (t * t);
-        Vector3 gravity = new Vector3(0.0f, 9.8f, 0.0f) * mass;
+        Vector3 gravity = new Vector3(0.0f, -9.8f, 0.0f) * mass;
         //Momentum and Gravity.
         for (int i = 0; i < X.Length; ++i){
             G[i] = t2inv * mass * (X[i] - X_hat[i]);
-            G[i] += gravity;
+            G[i] -= gravity;
         }
 
         //Spring Force.
@@ -186,6 +186,7 @@ public class implicit_model : MonoBehaviour
     }
     bool init = false;
     Vector3[] X_hat, G;
+
     // Update is called once per frame
     void Update () 
 	{
@@ -212,7 +213,7 @@ public class implicit_model : MonoBehaviour
         float omega = 0;
 		
         // bool end = false;
-        for(int k=0; k<32; k++)
+        for(int k=0; k < 32; k++)
 		{
 			Get_Gradient(X, X_hat, t, G);
             float ggradinv = 1.0f / (t2inv * mass + 4 * spring_k);
